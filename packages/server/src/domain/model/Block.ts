@@ -71,13 +71,14 @@ export class ToolResultBlock extends Block {
 export class ImageBlock extends Block {
   override readonly type = 'image' as const;
   constructor(
-    readonly placeholder: string,
+    /** 可直接用于 <img src> 的 data URL（base64），无数据时为 null。 */
+    readonly dataUrl: string | null,
     readonly mediaType?: string,
   ) {
     super();
   }
   override toDTO(): BlockDTO {
-    return { type: 'image', placeholder: this.placeholder, mediaType: this.mediaType };
+    return { type: 'image', dataUrl: this.dataUrl, mediaType: this.mediaType };
   }
 }
 

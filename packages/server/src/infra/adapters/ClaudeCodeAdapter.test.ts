@@ -76,6 +76,17 @@ describe('ClaudeCodeAdapter', () => {
     expect(session.eventCount).toBeGreaterThan(before);
   });
 
+  it('classifies pure tool_result events as tool role', () => {
+    const { session } = adapter.parseSession(ref, lines);
+    const toolEvents = session.events.filter((e) => e.role === 'tool');
+    // fixture 含 tool_result，应至少有一个 tool 角色事件
+    expect(toolEvents.length).toBeGreaterThan(0);
+    // tool 角色事件应只含 tool_result 块
+    for (const e of toolEvents) {
+      expect(e.blocks.every((b) => b.type === 'tool_result')).toBe(true);
+    }
+  });
+
   it('produces serializable DTOs', () => {
     const { session } = adapter.parseSession(ref, lines);
     const dto = session.events[0]!.toDTO();

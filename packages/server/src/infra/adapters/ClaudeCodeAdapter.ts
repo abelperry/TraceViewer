@@ -110,7 +110,12 @@ function mapBlocks(content: unknown): Block[] {
         break;
       case 'image': {
         const src = (b.source ?? {}) as Record<string, unknown>;
-        blocks.push(new ImageBlock('[image]', typeof src.media_type === 'string' ? src.media_type : undefined));
+        const mediaType = typeof src.media_type === 'string' ? src.media_type : undefined;
+        // source.type=base64 时，data 为纯 base64，组装成可直接渲染的 data URL
+        const data = typeof src.data === 'string' ? src.data : null;
+        const dataUrl =
+          src.type === 'base64' && data && mediaType ? `data:${mediaType};base64,${data}` : null;
+        blocks.push(new ImageBlock(dataUrl, mediaType));
         break;
       }
       default:
@@ -227,11 +232,18 @@ export class ClaudeCodeAdapter implements SourceAdapter {
       const blocks = mapBlocks(message.content);
       if (blocks.length === 0) continue;
 
+      // tool_result 在 Claude 里挂在 user 消息下，但本质是工具返回。
+      // 纯 tool_result 的事件归类为 tool 角色，使迷你地图能区分工具返回。
+      const baseRole = normalizeRole(message.role ?? type);
+      const allToolResults =
+        blocks.length > 0 && blocks.every((b) => b instanceof ToolResultBlock);
+      const role: Role = allToolResults ? 'tool' : baseRole;
+
       const event = new Event(
         String(r.uuid ?? `${ref.sessionId}:${out.length}`),
         typeof r.parentUuid === 'string' ? r.parentUuid : null,
         ref.sessionId,
-        normalizeRole(message.role ?? type),
+        role,
         parseTimestamp(r.timestamp),
         r.isSidechain === true,
         blocks,

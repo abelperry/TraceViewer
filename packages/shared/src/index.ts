@@ -46,8 +46,8 @@ export interface ImageBlockDTO {
   type: 'image';
   /** 媒体类型，如 image/png */
   mediaType?: string;
-  /** 占位或引用，不内联大数据 */
-  placeholder: string;
+  /** 可直接用于 <img src> 的 data URL（base64）。无数据时为 null。 */
+  dataUrl: string | null;
 }
 
 export type BlockDTO =
