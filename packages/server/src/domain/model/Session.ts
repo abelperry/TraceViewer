@@ -16,8 +16,20 @@ import type { Event } from './Event.js';
 import { SessionMeta } from './SessionMeta.js';
 import { TokenUsage } from './TokenUsage.js';
 
-/** 距最后一条事件超过此时长（ms）视为已结束。 */
-export const RUNNING_THRESHOLD_MS = 60_000;
+/** 距最后一次活动超过此时长（ms）视为已结束。 */
+export const RUNNING_THRESHOLD_MS = 2 * 60_000;
+
+/**
+ * 由「最后活动时刻」判定运行状态的纯规则（领域逻辑，单一出处）。
+ * 最后活动可以是最后事件时间戳，或文件 mtime（更实时）。
+ */
+export function statusFromActivity(
+  lastActivity: Date | null,
+  now: Date,
+): SessionStatus {
+  if (!lastActivity) return 'done';
+  return now.getTime() - lastActivity.getTime() < RUNNING_THRESHOLD_MS ? 'running' : 'done';
+}
 
 export interface EventNode {
   event: Event;
@@ -99,9 +111,7 @@ export class Session {
 
   /** running/done 判定规则内聚在聚合根。 */
   recomputeStatus(now: Date): SessionStatus {
-    const last = this.lastEventAt;
-    if (!last) return 'done';
-    return now.getTime() - last.getTime() < RUNNING_THRESHOLD_MS ? 'running' : 'done';
+    return statusFromActivity(this.lastEventAt, now);
   }
 
   /** 用 parentId 组装事件树。无父或父不存在的事件视为根。 */

@@ -11,6 +11,7 @@
 
 import {
   TranscriptAssembler,
+  statusFromActivity,
   type Session,
   type SessionRepository,
   type SourceAdapter,
@@ -70,8 +71,25 @@ export class SessionQueryService {
     return this.repo.listCollections();
   }
 
-  queryMetas(filter: SessionQueryFilter): SessionMeta[] {
-    return this.repo.queryMetas(filter);
+  /**
+   * 查询元数据，并用文件 mtime 实时覆盖 status。
+   *
+   * 库里的 status 是 syncIndex 那一刻的快照，可能过期；这里按 mtime
+   * （文件系统真相）重算，使「正在写入」的会话立刻显示 running。
+   */
+  async queryMetas(filter: SessionQueryFilter): Promise<SessionMeta[]> {
+    const metas = this.repo.queryMetas(filter);
+    const now = new Date();
+    return Promise.all(
+      metas.map(async (meta) => {
+        const entry = this.refIndex.get(meta.id);
+        if (!entry) return meta;
+        const mtime = await entry.source.lastModified(entry.ref);
+        // 取 mtime 与最后事件时间的较晚者作为活动信号
+        const lastActivity = laterOf(mtime, meta.lastEventAt);
+        return meta.withStatus(statusFromActivity(lastActivity, now));
+      }),
+    );
   }
 
   findMeta(id: string): SessionMeta | null {
@@ -131,4 +149,10 @@ export class SessionQueryService {
 
 function nowOrEpoch(): Date {
   return new Date();
+}
+
+function laterOf(a: Date | null, b: Date | null): Date | null {
+  if (!a) return b;
+  if (!b) return a;
+  return a.getTime() >= b.getTime() ? a : b;
 }

@@ -83,6 +83,15 @@ export class FsTraceSource implements TraceSource {
     }
   }
 
+  async lastModified(ref: RawSessionRef): Promise<Date | null> {
+    try {
+      const s = await stat(ref.locator);
+      return s.mtime;
+    } catch {
+      return null;
+    }
+  }
+
   /**
    * 从字节偏移增量读取，按完整行切分。
    * 若读到的尾部不是完整行（无换行结尾），保留该残行不返回，

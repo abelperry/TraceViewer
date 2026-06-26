@@ -25,6 +25,23 @@ export class SessionMeta {
     readonly eventCount: number,
   ) {}
 
+  /** 返回一个仅替换 status 的不可变副本（用于查询时按 mtime 实时覆盖）。 */
+  withStatus(status: SessionStatus): SessionMeta {
+    return new SessionMeta(
+      this.id,
+      this.source,
+      this.collectionId,
+      this.title,
+      this.cwd,
+      this.gitBranch,
+      this.model,
+      status,
+      this.startedAt,
+      this.lastEventAt,
+      this.eventCount,
+    );
+  }
+
   toDTO(): SessionMetaDTO {
     return {
       id: this.id,

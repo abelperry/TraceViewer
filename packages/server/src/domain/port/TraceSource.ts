@@ -38,6 +38,9 @@ export interface TraceSource {
   /** 当前文件字节大小（作为初始偏移）。 */
   currentOffset(ref: RawSessionRef): Promise<number>;
 
+  /** 文件最后修改时间（mtime），用作实时活动信号。无法获取返回 null。 */
+  lastModified(ref: RawSessionRef): Promise<Date | null>;
+
   /** 从给定偏移增量读取。 */
   tail(ref: RawSessionRef, fromOffset: number): Promise<TailResult>;
 

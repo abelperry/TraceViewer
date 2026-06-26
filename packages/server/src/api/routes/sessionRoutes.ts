@@ -21,7 +21,7 @@ export async function registerRestRoutes(app: FastifyInstance, deps: Deps): Prom
     Querystring: { collectionId?: string; keyword?: string; limit?: string; offset?: string };
   }>('/sessions', async (req) => {
     const { collectionId, keyword, limit, offset } = req.query;
-    const metas = query.queryMetas({
+    const metas = await query.queryMetas({
       collectionId,
       keyword,
       limit: limit ? Number(limit) : undefined,
