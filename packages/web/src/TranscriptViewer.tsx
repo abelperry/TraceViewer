@@ -17,14 +17,17 @@ function formatTs(ts: string | null): string {
 function Minimap({ events, onJump }: { events: EventDTO[]; onJump: (id: string) => void }) {
   return (
     <div className="minimap">
-      {events.map((e) => (
-        <div
-          key={e.id}
-          className={`cell mini-${e.role}`}
-          title={`${e.role} · ${e.blocks.map((b) => b.type).join(', ')}`}
-          onClick={() => onJump(e.id)}
-        />
-      ))}
+      {events.map((e) => {
+        const hasError = e.blocks.some((b) => b.type === 'tool_result' && b.isError);
+        return (
+          <div
+            key={e.id}
+            className={`cell ${hasError ? 'mini-error' : `mini-${e.role}`}`}
+            title={`${e.role}${hasError ? ' · error' : ''} · ${e.blocks.map((b) => b.type).join(', ')}`}
+            onClick={() => onJump(e.id)}
+          />
+        );
+      })}
     </div>
   );
 }
@@ -74,20 +77,24 @@ export function TranscriptViewer({ sessionId }: { sessionId: string | null }) {
       </div>
       <Minimap events={events} onJump={jump} />
       <div className="transcript" ref={transcriptRef} onScroll={onScroll}>
-        {events.map((e) => (
-          <div className="event" id={`ev-${e.id}`} key={e.id}>
-            <div className={`event-head ${roleClass(e.role)}`}>
-              <span>{e.role}</span>
-              {e.isSidechain && <span className="badge">sidechain</span>}
-              <span className="ts">{formatTs(e.timestamp)}</span>
+        {events.map((e) => {
+          const hasError = e.blocks.some((b) => b.type === 'tool_result' && b.isError);
+          return (
+            <div className="event" id={`ev-${e.id}`} key={e.id}>
+              <div className={`event-head ${roleClass(e.role)} ${hasError ? 'has-error' : ''}`}>
+                <span>{e.role}</span>
+                {hasError && <span className="badge err-badge">error</span>}
+                {e.isSidechain && <span className="badge">sidechain</span>}
+                <span className="ts">{formatTs(e.timestamp)}</span>
+              </div>
+              <div className="event-body">
+                {e.blocks.map((b, i) => (
+                  <BlockView key={i} block={b} />
+                ))}
+              </div>
             </div>
-            <div className="event-body">
-              {e.blocks.map((b, i) => (
-                <BlockView key={i} block={b} />
-              ))}
-            </div>
-          </div>
-        ))}
+          );
+        })}
       </div>
     </>
   );

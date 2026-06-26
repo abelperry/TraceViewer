@@ -1,9 +1,16 @@
 import type { BlockDTO } from '@trace-review/shared';
+import { CodeBox } from './CodeBox';
+import { ToolCallView } from './ToolRenderers';
+import { Markdown } from './Markdown';
 
 export function BlockView({ block }: { block: BlockDTO }) {
   switch (block.type) {
     case 'text':
-      return <div className="block block-text">{block.text}</div>;
+      return (
+        <div className="block block-text">
+          <Markdown text={block.text} />
+        </div>
+      );
 
     case 'thinking':
       return (
@@ -18,45 +25,31 @@ export function BlockView({ block }: { block: BlockDTO }) {
       );
 
     case 'tool_call':
-      return (
-        <div className="block tool">
-          <div className="tool-call-head">
-            <span>🔧 {block.name}</span>
-            <span style={{ color: 'var(--text-dim)' }}>{block.callId.slice(0, 12)}</span>
-          </div>
-          <pre>{formatInput(block.input)}</pre>
-        </div>
-      );
+      return <ToolCallView block={block} />;
 
     case 'tool_result':
       return (
-        <div className="block tool">
-          <div className={`result ${block.isError ? 'error' : ''}`}>
-            <div className="result-label">{block.isError ? 'error' : 'result'}</div>
-            <pre>{truncate(block.output, 4000)}</pre>
-          </div>
+        <div className={`block tool-result ${block.isError ? 'error' : ''}`}>
+          <div className="result-label">{block.isError ? '✕ error' : 'result'}</div>
+          <CodeBox text={truncate(block.output, 8000)} />
         </div>
       );
 
     case 'image':
       return (
         <div className="block">
-          <span className="img-placeholder">🖼 {block.mediaType ?? 'image'}</span>
+          {block.dataUrl ? (
+            <a href={block.dataUrl} target="_blank" rel="noreferrer">
+              <img className="block-image" src={block.dataUrl} alt={block.mediaType ?? 'image'} />
+            </a>
+          ) : (
+            <span className="img-placeholder">🖼 {block.mediaType ?? 'image'}（无数据）</span>
+          )}
         </div>
       );
 
     default:
       return null;
-  }
-}
-
-function formatInput(input: unknown): string {
-  if (input == null) return '';
-  if (typeof input === 'string') return input;
-  try {
-    return JSON.stringify(input, null, 2);
-  } catch {
-    return String(input);
   }
 }
 
