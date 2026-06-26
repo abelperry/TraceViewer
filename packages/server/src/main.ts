@@ -5,6 +5,7 @@ import cors from '@fastify/cors';
 
 import { AdapterRegistry } from './infra/adapters/AdapterRegistry.js';
 import { ClaudeCodeAdapter } from './infra/adapters/ClaudeCodeAdapter.js';
+import { CodexAdapter } from './infra/adapters/CodexAdapter.js';
 import { FsTraceSource } from './infra/filesource/FsTraceSource.js';
 import { SqliteSessionRepository } from './infra/persistence/SqliteSessionRepository.js';
 import { SessionQueryService } from './application/service/SessionQueryService.js';
@@ -23,12 +24,15 @@ async function bootstrap(): Promise<void> {
   const port = Number(process.env.PORT ?? 4000);
   const claudeRoot =
     process.env.CLAUDE_PROJECTS_DIR ?? join(homedir(), '.claude', 'projects');
+  const codexRoot = process.env.CODEX_SESSIONS_DIR ?? join(homedir(), '.codex');
   const dbPath = process.env.DB_PATH ?? join(process.cwd(), 'trace-review.sqlite');
 
   // ---- infra ----
-  const registry = new AdapterRegistry([new ClaudeCodeAdapter()]);
+  // 新增格式 = 注册一个 adapter + 一个 trace source，application/api/web 零改动。
+  const registry = new AdapterRegistry([new ClaudeCodeAdapter(), new CodexAdapter()]);
   const claudeSource = new FsTraceSource('claude-code', [claudeRoot]);
-  const sources = [claudeSource];
+  const codexSource = new FsTraceSource('codex', [codexRoot]);
+  const sources = [claudeSource, codexSource];
   const repo = new SqliteSessionRepository(dbPath);
 
   // ---- application ----
@@ -47,7 +51,7 @@ async function bootstrap(): Promise<void> {
   await registerStreamRoutes(app, { query, live });
 
   await app.listen({ port, host: '127.0.0.1' });
-  app.log.info(`indexed ${indexed} sessions from ${claudeRoot}`);
+  app.log.info(`indexed ${indexed} sessions from ${claudeRoot} & ${codexRoot}`);
 
   const shutdown = () => {
     live.stop();
