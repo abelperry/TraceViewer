@@ -26,6 +26,7 @@ import type {
   ParsedSession,
   RawSessionRef,
   SourceAdapter,
+  UsageSample,
 } from '../../domain/index.js';
 import type { Role } from '@trace-review/shared';
 import { deriveTitle } from './title.js';
@@ -257,5 +258,56 @@ export class ClaudeCodeAdapter implements SourceAdapter {
   /** 无 ai-title 时，用首条用户文本截断作为标题兜底。 */
   private fallbackTitle(events: Event[]): string | null {
     return deriveTitle(events);
+  }
+
+  /**
+   * 抽取用量样本：
+   *   - assistant 消息带 usage → token 样本（model/ts 自带）
+   *   - user/assistant 含文本块 → message 轮次（isMessage），tool_result 不计
+   */
+  extractUsage(ref: RawSessionRef, lines: string[]): UsageSample[] {
+    const samples: UsageSample[] = [];
+    let model: string | null = null;
+    for (const line of lines) {
+      const trimmed = line.trim();
+      if (!trimmed) continue;
+      let r: Record<string, unknown>;
+      try {
+        r = JSON.parse(trimmed) as Record<string, unknown>;
+      } catch {
+        continue;
+      }
+      const type = r.type;
+      if (type !== 'user' && type !== 'assistant') continue;
+
+      const message = (r.message ?? {}) as Record<string, unknown>;
+      if (typeof message.model === 'string') model = message.model;
+      const ts = parseTimestamp(r.timestamp);
+      if (!ts) continue;
+
+      const usage = message.usage as Record<string, unknown> | undefined;
+      const input = usage && typeof usage.input_tokens === 'number' ? usage.input_tokens : 0;
+      const output = usage && typeof usage.output_tokens === 'number' ? usage.output_tokens : 0;
+
+      const blocks = mapBlocks(message.content);
+      // message 轮次：含文本块、且非纯 tool_result
+      const hasText = blocks.some((b) => b instanceof TextBlock);
+      const allToolResults =
+        blocks.length > 0 && blocks.every((b) => b instanceof ToolResultBlock);
+      const isMessage = hasText && !allToolResults;
+
+      if (input === 0 && output === 0 && !isMessage) continue;
+
+      samples.push({
+        timestamp: ts,
+        source: this.id,
+        model,
+        sessionId: ref.sessionId,
+        inputTokens: input,
+        outputTokens: output,
+        isMessage,
+      });
+    }
+    return samples;
   }
 }

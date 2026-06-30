@@ -98,6 +98,32 @@ describe('CodexAdapter', () => {
     // fixture 首条 user 是 <environment_context>，标题不应以它开头
     expect(session.title.startsWith('<environment_context')).toBe(false);
   });
+
+  it('extracts usage samples (cumulative token diff + messages)', () => {
+    const usage = adapter.extractUsage(ref, lines);
+    // fixture 含 token_count 与 message
+    for (const u of usage) {
+      expect(u.source).toBe('codex');
+      expect(u.sessionId).toBe('codex-1');
+      expect(u.inputTokens).toBeGreaterThanOrEqual(0);
+    }
+  });
+
+  it('diffs cumulative token_count into per-event increments', () => {
+    const refX = { sessionId: 's', collectionId: 'c', locator: '/x/rollout.jsonl' };
+    const fakeLines = [
+      JSON.stringify({ timestamp: '2026-01-01T00:00:00Z', type: 'session_meta', payload: { cwd: '/p', model_provider: 'gpt' } }),
+      JSON.stringify({ timestamp: '2026-01-01T00:00:01Z', type: 'event_msg', payload: { type: 'token_count', info: { total_token_usage: { input_tokens: 100, output_tokens: 10 } } } }),
+      JSON.stringify({ timestamp: '2026-01-01T00:00:02Z', type: 'event_msg', payload: { type: 'token_count', info: { total_token_usage: { input_tokens: 250, output_tokens: 30 } } } }),
+    ];
+    const usage = adapter.extractUsage(refX, fakeLines);
+    // 首次 100/10，第二次累计 250/30 → 增量 150/20
+    expect(usage).toHaveLength(2);
+    expect(usage[0]!.inputTokens).toBe(100);
+    expect(usage[0]!.outputTokens).toBe(10);
+    expect(usage[1]!.inputTokens).toBe(150);
+    expect(usage[1]!.outputTokens).toBe(20);
+  });
 });
 
 describe('detectError exit code', () => {

@@ -112,3 +112,27 @@ export interface StreamPatchDTO {
   /** 元数据变化（状态、计数、token 等） */
   metaPatch: Partial<SessionMetaDTO> & { tokenUsage?: TokenUsageDTO };
 }
+
+export type StatsRange = '7d' | '30d' | 'all';
+
+/** 某一天的用量（已跨 source/model 折叠） */
+export interface DailyPointDTO {
+  date: string;
+  sessionCount: number;
+  messageCount: number;
+  totalTokens: number;
+}
+
+export interface StatsDTO {
+  range: StatsRange;
+  /** 区间起止（YYYY-MM-DD，闭区间） */
+  from: string;
+  to: string;
+  days: DailyPointDTO[];
+  summary: {
+    sessions: number;
+    messages: number;
+    totalTokens: number;
+    activeDays: number;
+  };
+}

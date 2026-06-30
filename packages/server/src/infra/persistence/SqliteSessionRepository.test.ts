@@ -1,10 +1,11 @@
 import { describe, it, expect, afterEach } from 'vitest';
+import Database from 'better-sqlite3';
 import { SqliteSessionRepository } from './SqliteSessionRepository.js';
 import { SessionMeta } from '../../domain/index.js';
 
 const repos: SqliteSessionRepository[] = [];
 function repo(): SqliteSessionRepository {
-  const r = new SqliteSessionRepository(':memory:');
+  const r = new SqliteSessionRepository(new Database(':memory:'));
   repos.push(r);
   return r;
 }

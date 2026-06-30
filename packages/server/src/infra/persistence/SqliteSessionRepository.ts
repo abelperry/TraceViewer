@@ -31,8 +31,9 @@ interface MetaRow {
 export class SqliteSessionRepository implements SessionRepository {
   private readonly db: Database.Database;
 
-  constructor(dbPath: string) {
-    this.db = new Database(dbPath);
+  /** 接受已建好的连接（与统计仓储共享）；传字符串则自建。 */
+  constructor(db: Database.Database) {
+    this.db = db;
     this.db.pragma('journal_mode = WAL');
     this.migrate();
   }

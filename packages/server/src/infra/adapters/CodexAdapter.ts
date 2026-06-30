@@ -34,6 +34,7 @@ import type {
   ParsedSession,
   RawSessionRef,
   SourceAdapter,
+  UsageSample,
 } from '../../domain/index.js';
 import type { Role } from '@trace-review/shared';
 import { deriveTitle } from './title.js';
@@ -266,5 +267,81 @@ export class CodexAdapter implements SourceAdapter {
 
   private fallbackTitle(events: Event[]): string | null {
     return deriveTitle(events);
+  }
+
+  /**
+   * 抽取用量样本：
+   *   - token_count 的 info.total_token_usage 是累计值 → 取相邻差分还原增量，
+   *     按该事件时间戳归日；model 用 session_meta 的 model_provider
+   *   - message(role=user/assistant 且含文本) → message 轮次
+   * token 样本与 message 样本分别 push（token 样本 isMessage=false）。
+   */
+  extractUsage(ref: RawSessionRef, lines: string[]): UsageSample[] {
+    const samples: UsageSample[] = [];
+    let model: string | null = null;
+    let prevInput = 0;
+    let prevOutput = 0;
+    let seenUsage = false;
+
+    for (const line of lines) {
+      const trimmed = line.trim();
+      if (!trimmed) continue;
+      let r: Record<string, unknown>;
+      try {
+        r = JSON.parse(trimmed) as Record<string, unknown>;
+      } catch {
+        continue;
+      }
+      const type = r.type;
+      const payload = (r.payload ?? {}) as Record<string, unknown>;
+      const ts = parseTimestamp(r.timestamp);
+
+      if (type === 'session_meta') {
+        if (typeof payload.model_provider === 'string') model = payload.model_provider;
+        continue;
+      }
+
+      if (type === 'event_msg' && payload.type === 'token_count') {
+        const info = payload.info as Record<string, unknown> | null | undefined;
+        const usage = info?.total_token_usage as Record<string, unknown> | undefined;
+        if (!usage || !ts) continue;
+        const curInput = typeof usage.input_tokens === 'number' ? usage.input_tokens : 0;
+        const curOutput = typeof usage.output_tokens === 'number' ? usage.output_tokens : 0;
+        // 累计值差分；首次出现即为该次全量增量
+        const dInput = seenUsage ? Math.max(0, curInput - prevInput) : curInput;
+        const dOutput = seenUsage ? Math.max(0, curOutput - prevOutput) : curOutput;
+        prevInput = curInput;
+        prevOutput = curOutput;
+        seenUsage = true;
+        if (dInput === 0 && dOutput === 0) continue;
+        samples.push({
+          timestamp: ts,
+          source: this.id,
+          model,
+          sessionId: ref.sessionId,
+          inputTokens: dInput,
+          outputTokens: dOutput,
+          isMessage: false,
+        });
+        continue;
+      }
+
+      if (type === 'response_item' && payload.type === 'message' && ts) {
+        const role = payload.role;
+        if (role !== 'user' && role !== 'assistant') continue;
+        const { text } = flattenMessageContent(payload.content);
+        if (!text.trim()) continue;
+        samples.push({
+          timestamp: ts,
+          source: this.id,
+          model,
+          sessionId: ref.sessionId,
+          inputTokens: 0,
+          outputTokens: 0,
+          isMessage: true,
+        });
+      }
+    }
+    return samples;
   }
 }

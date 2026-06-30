@@ -87,6 +87,18 @@ describe('ClaudeCodeAdapter', () => {
     }
   });
 
+  it('extracts usage samples with tokens and message flags', () => {
+    const usage = adapter.extractUsage(ref, lines);
+    expect(usage.length).toBeGreaterThan(0);
+    expect(usage.some((u) => u.inputTokens > 0 || u.outputTokens > 0)).toBe(true);
+    expect(usage.some((u) => u.isMessage)).toBe(true);
+    for (const u of usage) {
+      expect(u.source).toBe('claude-code');
+      expect(u.timestamp instanceof Date).toBe(true);
+      expect(u.sessionId).toBe('sess-1');
+    }
+  });
+
   it('produces serializable DTOs', () => {
     const { session } = adapter.parseSession(ref, lines);
     const dto = session.events[0]!.toDTO();

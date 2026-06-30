@@ -10,6 +10,7 @@
 import type { SourceId } from '@trace-review/shared';
 import type { Event } from '../model/Event.js';
 import type { Session } from '../model/Session.js';
+import type { UsageSample } from '../model/DailyStat.js';
 
 /** 一次原始会话引用（由 TraceSource 发现），用于定位与读取。 */
 export interface RawSessionRef {
@@ -52,4 +53,10 @@ export interface SourceAdapter {
     newLines: string[],
     state: AdapterParseState,
   ): ParsedIncrement;
+
+  /**
+   * 从原始行抽取用量样本（用于每日统计）。
+   * 「如何从某格式抽 token / message 样本」是格式专属知识，故放在 adapter。
+   */
+  extractUsage(ref: RawSessionRef, lines: string[]): UsageSample[];
 }
