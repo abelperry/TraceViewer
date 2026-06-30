@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from 'react';
 import type { CollectionDTO, SessionMetaDTO } from '@trace-review/shared';
 import { api } from './api';
 import { TranscriptViewer } from './TranscriptViewer';
+import { StatsView } from './StatsView';
 import { ColResizer } from './ColResizer';
 import { useTheme } from './useTheme';
 import './styles.css';
@@ -97,6 +98,7 @@ export function App() {
   const [collections, setCollections] = useState<CollectionDTO[]>([]);
   const [sessions, setSessions] = useState<SessionMetaDTO[]>([]);
   const [activeSession, setActiveSession] = useState<string | null>(null);
+  const [view, setView] = useState<'sessions' | 'stats'>('sessions');
   const [keyword, setKeyword] = useState('');
   const [navW, setNavW] = usePersistedWidth('tr.navW', 300);
   const [theme, toggleTheme] = useTheme();
@@ -170,7 +172,14 @@ export function App() {
     <div className="app">
       <div className="col-nav" style={{ width: navW }}>
         <div className="col-head">
-          <span>Sessions</span>
+          <div className="view-tabs">
+            <button className={view === 'sessions' ? 'on' : ''} onClick={() => setView('sessions')}>
+              Sessions
+            </button>
+            <button className={view === 'stats' ? 'on' : ''} onClick={() => setView('stats')}>
+              Stats
+            </button>
+          </div>
           <button
             className="theme-toggle"
             onClick={toggleTheme}
@@ -179,12 +188,15 @@ export function App() {
             {theme === 'dark' ? '☀️' : '🌙'}
           </button>
         </div>
+        {view === 'sessions' && (
         <input
           className="search"
           placeholder="搜索标题 / cwd…"
           value={keyword}
           onChange={(e) => setKeyword(e.target.value)}
         />
+        )}
+        {view === 'sessions' && (
         <div className="col-scroll">
           {groups.map(({ collection, sessions: list }) => {
             const isOpen = expanded.has(collection.id);
@@ -234,11 +246,12 @@ export function App() {
           })}
           {groups.length === 0 && <div className="empty">无会话</div>}
         </div>
+        )}
         <ColResizer width={navW} setWidth={setNavW} min={220} max={520} />
       </div>
 
       <div className="col-viewer">
-        <TranscriptViewer sessionId={activeSession} />
+        {view === 'stats' ? <StatsView /> : <TranscriptViewer sessionId={activeSession} />}
       </div>
     </div>
   );

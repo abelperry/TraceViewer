@@ -2,6 +2,8 @@ import type {
   CollectionDTO,
   SessionDetailDTO,
   SessionMetaDTO,
+  StatsDTO,
+  StatsRange,
 } from '@trace-review/shared';
 
 const BASE = '/api';
@@ -24,4 +26,5 @@ export const api = {
   },
   sessionDetail: (id: string) => getJSON<SessionDetailDTO>(`/sessions/${id}`),
   streamUrl: (id: string) => `${BASE}/sessions/${id}/stream`,
+  stats: (range: StatsRange) => getJSON<StatsDTO>(`/stats?range=${range}`),
 };
