@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import type { CollectionDTO, SessionMetaDTO } from '@trace-review/shared';
 import { api } from './api';
 import { TranscriptViewer } from './TranscriptViewer';
@@ -6,8 +6,75 @@ import { ColResizer } from './ColResizer';
 import { useTheme } from './useTheme';
 import './styles.css';
 
+const DEFAULT_VISIBLE = 5;
+
 function collName(id: string): string {
   return id.replace(/^-/, '').replace(/-/g, '/');
+}
+
+/** 弱信息路径段：去重时跳过，不作为标签主体。 */
+const NOISE_SEG = /^(gen\d+|extracted|uploads?|[0-9a-f-]{8,})$/i;
+
+/**
+ * 为一组 collection 计算可辨识的短标签。
+ * 标签主体取「最深的有信息段」（跳过 hash/gen0/extracted 等噪声）；
+ * 若仍重复，向上找最近的、能区分的有信息祖先段作前缀（用 ›）。
+ */
+function buildLabels(ids: string[]): Map<string, string> {
+  // 每个 id 的有信息段序列（保留原序）
+  const meaningful = new Map<string, string[]>();
+  for (const id of ids) {
+    const segs = collName(id).split('/').filter(Boolean);
+    const kept = segs.filter((s) => !NOISE_SEG.test(s));
+    meaningful.set(id, kept.length ? kept : segs); // 全是噪声则退回原段
+  }
+
+  const labelAt = (id: string, depth: number): string => {
+    const p = meaningful.get(id)!;
+    const tail = p.slice(Math.max(0, p.length - depth));
+    return tail.join(' › ');
+  };
+
+  const labels = new Map<string, string>();
+  let pending = [...ids];
+  let depth = 1;
+  while (pending.length > 0 && depth <= 6) {
+    const buckets = new Map<string, string[]>();
+    for (const id of pending) {
+      const t = labelAt(id, depth);
+      const arr = buckets.get(t);
+      if (arr) arr.push(id);
+      else buckets.set(t, [id]);
+    }
+    const next: string[] = [];
+    for (const [tail, group] of buckets) {
+      if (group.length === 1) labels.set(group[0]!, tail);
+      else {
+        const canDeepen = group.some((id) => meaningful.get(id)!.length > depth);
+        if (canDeepen) next.push(...group);
+        else group.forEach((id) => labels.set(id, tail));
+      }
+    }
+    pending = next;
+    depth++;
+  }
+  for (const id of pending) labels.set(id, collName(id));
+  return labels;
+}
+
+function relTime(iso: string | null): string {
+  if (!iso) return '';
+  const t = new Date(iso).getTime();
+  if (Number.isNaN(t)) return '';
+  const diff = Date.now() - t;
+  const m = Math.floor(diff / 60_000);
+  if (m < 1) return 'now';
+  if (m < 60) return `${m}m`;
+  const h = Math.floor(m / 60);
+  if (h < 24) return `${h}h`;
+  const d = Math.floor(h / 24);
+  if (d < 30) return `${d}d`;
+  return `${Math.floor(d / 30)}mo`;
 }
 
 function usePersistedWidth(key: string, initial: number) {
@@ -21,45 +88,89 @@ function usePersistedWidth(key: string, initial: number) {
   return [w, setW] as const;
 }
 
+interface CollGroup {
+  collection: CollectionDTO;
+  sessions: SessionMetaDTO[];
+}
+
 export function App() {
   const [collections, setCollections] = useState<CollectionDTO[]>([]);
-  const [activeCollection, setActiveCollection] = useState<string | null>(null);
   const [sessions, setSessions] = useState<SessionMetaDTO[]>([]);
   const [activeSession, setActiveSession] = useState<string | null>(null);
   const [keyword, setKeyword] = useState('');
-  const [colW, setColW] = usePersistedWidth('tr.colW', 240);
-  const [sessW, setSessW] = usePersistedWidth('tr.sessW', 320);
+  const [navW, setNavW] = usePersistedWidth('tr.navW', 300);
   const [theme, toggleTheme] = useTheme();
+  // 展开的 collection 集合；每个 collection 是否“显示全部”
+  const [expanded, setExpanded] = useState<Set<string>>(new Set());
+  const [showAll, setShowAll] = useState<Set<string>>(new Set());
 
   useEffect(() => {
     const load = () => api.collections().then(setCollections).catch(() => {});
     load();
-    const t = setInterval(load, 10_000); // collection 变化较少，10s 轮询
+    const t = setInterval(load, 10_000);
     return () => clearInterval(t);
   }, []);
 
   useEffect(() => {
     const load = () =>
       api
-        .sessions({ collectionId: activeCollection ?? undefined, keyword: keyword || undefined })
+        .sessions({ keyword: keyword || undefined, limit: 2000 })
         .then(setSessions)
         .catch(() => {});
     load();
-    // 轻量轮询：列表自动反映实时 status 与新会话
     const t = setInterval(load, 4_000);
     return () => clearInterval(t);
-  }, [activeCollection, keyword]);
+  }, [keyword]);
 
-  // 当前选中 session 所属的 collection（用于左栏联动高亮）
+  // 按 collection 分组；组内已由后端按时间倒序返回
+  const groups = useMemo<CollGroup[]>(() => {
+    const byColl = new Map<string, SessionMetaDTO[]>();
+    for (const s of sessions) {
+      const arr = byColl.get(s.collectionId) ?? [];
+      arr.push(s);
+      byColl.set(s.collectionId, arr);
+    }
+    return collections
+      .map((c) => ({ collection: c, sessions: byColl.get(c.id) ?? [] }))
+      .filter((g) => g.sessions.length > 0);
+  }, [collections, sessions]);
+
+  // 组内可辨识短标签（重名自动补父级路径段）
+  const labels = useMemo(
+    () => buildLabels(groups.map((g) => g.collection.id)),
+    [groups],
+  );
+
+  // 搜索时自动展开所有有结果的 collection
+  useEffect(() => {
+    if (keyword) setExpanded(new Set(groups.map((g) => g.collection.id)));
+  }, [keyword, groups]);
+
+  const toggleExpand = (id: string) => {
+    setExpanded((prev) => {
+      const next = new Set(prev);
+      next.has(id) ? next.delete(id) : next.add(id);
+      return next;
+    });
+  };
+
+  const toggleShowAll = (id: string) => {
+    setShowAll((prev) => {
+      const next = new Set(prev);
+      next.has(id) ? next.delete(id) : next.add(id);
+      return next;
+    });
+  };
+
   const ownerCollection = activeSession
     ? sessions.find((s) => s.id === activeSession)?.collectionId ?? null
     : null;
 
   return (
     <div className="app">
-      <div className="col-collections" style={{ width: colW }}>
+      <div className="col-nav" style={{ width: navW }}>
         <div className="col-head">
-          <span>Collections</span>
+          <span>Sessions</span>
           <button
             className="theme-toggle"
             onClick={toggleTheme}
@@ -68,36 +179,6 @@ export function App() {
             {theme === 'dark' ? '☀️' : '🌙'}
           </button>
         </div>
-        <div className="col-scroll">
-          <div
-            className={`list-item ${activeCollection === null ? 'active' : ''}`}
-            onClick={() => setActiveCollection(null)}
-          >
-            <div className="title">全部</div>
-          </div>
-          {collections.map((c) => (
-            <div
-              key={c.id}
-              className={`list-item ${activeCollection === c.id ? 'active' : ''} ${
-                ownerCollection === c.id ? 'owner' : ''
-              }`}
-              onClick={() => setActiveCollection(c.id)}
-            >
-              <div className="title" title={c.id}>
-                {collName(c.name)}
-              </div>
-              <div className="sub">
-                <span>{c.source}</span>
-                <span>{c.sessionCount} sessions</span>
-              </div>
-            </div>
-          ))}
-        </div>
-        <ColResizer width={colW} setWidth={setColW} min={160} max={420} />
-      </div>
-
-      <div className="col-sessions" style={{ width: sessW }}>
-        <div className="col-head">Sessions</div>
         <input
           className="search"
           placeholder="搜索标题 / cwd…"
@@ -105,31 +186,55 @@ export function App() {
           onChange={(e) => setKeyword(e.target.value)}
         />
         <div className="col-scroll">
-          {sessions.map((s) => (
-            <div
-              key={s.id}
-              className={`list-item ${activeSession === s.id ? 'active' : ''}`}
-              onClick={() => {
-                setActiveSession(s.id);
-                setActiveCollection(s.collectionId);
-              }}
-            >
-              <div className="title">{s.title}</div>
-              <div className="sub">
-                <span className={`badge ${s.status}`}>{s.status}</span>
-                <span>{s.eventCount} ev</span>
-                {s.model && <span>{s.model}</span>}
-              </div>
-              {activeCollection === null && (
-                <div className="sub coll-tag" title={s.collectionId}>
-                  📁 {collName(s.collectionId)}
+          {groups.map(({ collection, sessions: list }) => {
+            const isOpen = expanded.has(collection.id);
+            const all = showAll.has(collection.id);
+            const visible = all ? list : list.slice(0, DEFAULT_VISIBLE);
+            const hidden = list.length - visible.length;
+            return (
+              <div className="tree-group" key={collection.id}>
+                <div
+                  className={`tree-coll ${ownerCollection === collection.id ? 'owner' : ''}`}
+                  onClick={() => toggleExpand(collection.id)}
+                  title={collection.id}
+                >
+                  <span className={`twisty ${isOpen ? 'open' : ''}`}>▸</span>
+                  <span className="coll-icon">🗂</span>
+                  <span className="coll-name">{labels.get(collection.id) ?? collection.name}</span>
+                  <span className="coll-count">{list.length}</span>
                 </div>
-              )}
-            </div>
-          ))}
-          {sessions.length === 0 && <div className="empty">无会话</div>}
+                {isOpen && (
+                  <div className="tree-children">
+                    {visible.map((s) => (
+                      <div
+                        key={s.id}
+                        className={`tree-session ${activeSession === s.id ? 'active' : ''}`}
+                        onClick={() => setActiveSession(s.id)}
+                        title={s.title}
+                      >
+                        <span className={`dot ${s.status}`} />
+                        <span className="sess-title">{s.title}</span>
+                        <span className="sess-time">{relTime(s.lastEventAt)}</span>
+                      </div>
+                    ))}
+                    {hidden > 0 && (
+                      <div className="show-more" onClick={() => toggleShowAll(collection.id)}>
+                        show more（{hidden}）
+                      </div>
+                    )}
+                    {all && list.length > DEFAULT_VISIBLE && (
+                      <div className="show-more" onClick={() => toggleShowAll(collection.id)}>
+                        收起
+                      </div>
+                    )}
+                  </div>
+                )}
+              </div>
+            );
+          })}
+          {groups.length === 0 && <div className="empty">无会话</div>}
         </div>
-        <ColResizer width={sessW} setWidth={setSessW} min={220} max={640} />
+        <ColResizer width={navW} setWidth={setNavW} min={220} max={520} />
       </div>
 
       <div className="col-viewer">

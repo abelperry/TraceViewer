@@ -59,8 +59,7 @@ body {
 .app { display: flex; height: 100vh; overflow: hidden; }
 
 /* ---- columns ---- */
-.col-collections { border-right: 1px solid var(--border); background: var(--panel); display: flex; flex-direction: column; position: relative; flex: none; }
-.col-sessions { border-right: 1px solid var(--border); background: var(--panel); display: flex; flex-direction: column; position: relative; flex: none; }
+.col-nav { border-right: 1px solid var(--border); background: var(--panel); display: flex; flex-direction: column; position: relative; flex: none; }
 .col-viewer { flex: 1; min-width: 0; display: flex; flex-direction: column; overflow: hidden; background: var(--bg); }
 
 /* 列宽拖拽手柄：贴在列右边框上 */
@@ -83,14 +82,27 @@ body {
 .transcript::-webkit-scrollbar-thumb { background: var(--border); border-radius: 4px; }
 .transcript::-webkit-scrollbar-thumb:hover { background: var(--text-dim); }
 
-/* ---- list items ---- */
-.list-item { padding: 9px 12px; border-bottom: 1px solid var(--border); cursor: pointer; }
-.list-item:hover { background: var(--panel-2); }
-.list-item.active { background: var(--panel-2); border-left: 2px solid var(--accent); }
-.list-item.owner { box-shadow: inset 2px 0 0 var(--role-tool); }
-.coll-tag { color: var(--text-dim); margin-top: 4px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.list-item .title { font-weight: 500; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.list-item .sub { color: var(--text-dim); font-size: 11px; margin-top: 3px; display: flex; gap: 8px; }
+/* ---- tree nav (collection -> sessions) ---- */
+.tree-group { border-bottom: 1px solid var(--border); }
+.tree-coll { display: flex; align-items: center; gap: 6px; padding: 8px 10px; cursor: pointer; user-select: none; }
+.tree-coll:hover { background: var(--panel-2); }
+.tree-coll.owner { box-shadow: inset 2px 0 0 var(--role-tool); }
+.tree-coll .twisty { color: var(--text-dim); font-size: 10px; transition: transform .12s ease; width: 10px; }
+.tree-coll .twisty.open { transform: rotate(90deg); }
+.tree-coll .coll-icon { font-size: 13px; }
+.tree-coll .coll-name { font-weight: 600; flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.tree-coll .coll-count { color: var(--text-dim); font-size: 11px; background: var(--panel-2); border-radius: 8px; padding: 0 7px; }
+
+.tree-children { background: var(--bg); }
+.tree-session { display: flex; align-items: center; gap: 7px; padding: 6px 10px 6px 26px; cursor: pointer; }
+.tree-session:hover { background: var(--panel-2); }
+.tree-session.active { background: var(--panel-2); box-shadow: inset 2px 0 0 var(--accent); }
+.tree-session .dot { width: 7px; height: 7px; border-radius: 50%; flex: none; background: var(--text-dim); }
+.tree-session .dot.running { background: var(--role-tool); box-shadow: 0 0 0 2px color-mix(in srgb, var(--role-tool) 30%, transparent); }
+.tree-session .sess-title { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 12px; }
+.tree-session .sess-time { color: var(--text-dim); font-size: 10px; flex: none; }
+.show-more { padding: 5px 10px 7px 26px; font-size: 11px; color: var(--accent); cursor: pointer; }
+.show-more:hover { text-decoration: underline; }
 
 .badge { font-size: 10px; padding: 1px 6px; border-radius: 8px; background: var(--panel-2); border: 1px solid var(--border); }
 .badge.running { color: var(--role-tool); border-color: var(--role-tool); }
