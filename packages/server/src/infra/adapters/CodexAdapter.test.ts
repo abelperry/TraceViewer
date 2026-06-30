@@ -92,6 +92,12 @@ describe('CodexAdapter', () => {
     session.appendEvents(inc.events);
     expect(session.eventCount).toBe(before + inc.events.length);
   });
+
+  it('skips environment_context boilerplate when deriving title', () => {
+    const { session } = adapter.parseSession(ref, lines);
+    // fixture 首条 user 是 <environment_context>，标题不应以它开头
+    expect(session.title.startsWith('<environment_context')).toBe(false);
+  });
 });
 
 describe('detectError exit code', () => {

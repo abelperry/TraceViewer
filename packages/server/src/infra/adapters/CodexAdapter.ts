@@ -36,6 +36,7 @@ import type {
   SourceAdapter,
 } from '../../domain/index.js';
 import type { Role } from '@trace-review/shared';
+import { deriveTitle } from './title.js';
 
 interface CodexState extends AdapterParseState {
   cwd: string | null;
@@ -264,15 +265,6 @@ export class CodexAdapter implements SourceAdapter {
   }
 
   private fallbackTitle(events: Event[]): string | null {
-    for (const e of events) {
-      if (e.role !== 'user') continue;
-      for (const b of e.blocks) {
-        if (b instanceof TextBlock) {
-          const text = b.text.trim().replace(/\s+/g, ' ');
-          if (text) return text.slice(0, 80);
-        }
-      }
-    }
-    return null;
+    return deriveTitle(events);
   }
 }
