@@ -10,7 +10,7 @@
  * 换远程/对象存储只需另写一个 TraceSource 实现，上层不动。
  */
 
-import { createReadStream } from 'node:fs';
+import { createReadStream, watchFile, unwatchFile } from 'node:fs';
 import { readFile, readdir, stat } from 'node:fs/promises';
 import { basename, dirname, join } from 'node:path';
 import chokidar, { type FSWatcher } from 'chokidar';
@@ -139,6 +139,20 @@ export class FsTraceSource implements TraceSource {
     watcher.on('change', emit);
     return () => {
       void watcher.close();
+    };
+  }
+
+  /**
+   * 监听单个文件：用 fs.watchFile 轮询（macOS 下 chokidar 的 change 事件不可靠，
+   * 故对「正在被查看」的会话采用稳健的按需轮询）。mtime 或 size 变化即回调。
+   */
+  watchFile(ref: RawSessionRef, onChange: () => void): Unsubscribe {
+    const listener = (cur: { mtimeMs: number; size: number }, prev: { mtimeMs: number; size: number }) => {
+      if (cur.mtimeMs !== prev.mtimeMs || cur.size !== prev.size) onChange();
+    };
+    watchFile(ref.locator, { interval: 1000 }, listener);
+    return () => {
+      unwatchFile(ref.locator, listener);
     };
   }
 }

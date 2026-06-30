@@ -46,4 +46,7 @@ export interface TraceSource {
 
   /** 监听追加/新增会话，回调被触发的会话引用。 */
   watch(onAppend: (e: AppendEvent) => void): Unsubscribe;
+
+  /** 监听单个文件的变化（按需轮询，用于实时查看某会话）。 */
+  watchFile(ref: RawSessionRef, onChange: () => void): Unsubscribe;
 }
