@@ -99,7 +99,7 @@ export interface SessionDetailDTO {
 export interface CollectionDTO {
   id: string;
   name: string;
-  source: SourceId;
+  sources: SourceId[];
   rootPath: string;
   sessionCount: number;
 }

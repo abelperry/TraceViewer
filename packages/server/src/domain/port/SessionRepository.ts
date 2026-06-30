@@ -20,7 +20,8 @@ export interface SessionQueryFilter {
 
 export interface CollectionSummary {
   collectionId: string;
-  source: string;
+  /** 该 collection 下出现过的来源（同一工程可能既有 claude-code 又有 codex）。 */
+  sources: string[];
   sessionCount: number;
 }
 

@@ -105,16 +105,19 @@ export class SqliteSessionRepository implements SessionRepository {
   }
 
   listCollections(): CollectionSummary[] {
+    // 按 collectionId 合并（同一工程下 claude/codex 归一），source 聚合成列表
     const rows = this.db
       .prepare(
-        `SELECT collection_id, source, COUNT(*) AS cnt
-         FROM session_meta GROUP BY collection_id, source
+        `SELECT collection_id,
+                GROUP_CONCAT(DISTINCT source) AS sources,
+                COUNT(*) AS cnt
+         FROM session_meta GROUP BY collection_id
          ORDER BY collection_id`,
       )
-      .all() as { collection_id: string; source: string; cnt: number }[];
+      .all() as { collection_id: string; sources: string; cnt: number }[];
     return rows.map((r) => ({
       collectionId: r.collection_id,
-      source: r.source,
+      sources: r.sources ? r.sources.split(',') : [],
       sessionCount: r.cnt,
     }));
   }

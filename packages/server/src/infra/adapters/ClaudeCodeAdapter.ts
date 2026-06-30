@@ -28,6 +28,7 @@ import type {
   SourceAdapter,
 } from '../../domain/index.js';
 import type { Role } from '@trace-review/shared';
+import { deriveTitle } from './title.js';
 
 interface ClaudeState extends AdapterParseState {
   title: string | null;
@@ -168,8 +169,9 @@ export class ClaudeCodeAdapter implements SourceAdapter {
     const session = new Session(
       ref.sessionId,
       this.id,
-      ref.collectionId,
-      state.title ?? this.fallbackTitle(events) ?? ref.sessionId,
+      // 用真实 cwd 作 collectionId，与 Codex 一致 —— 同一工程下的两端会话归并到一个 collection
+      state.cwd ?? ref.collectionId,
+      state.title ?? deriveTitle(events) ?? ref.sessionId,
       state.cwd,
       state.gitBranch,
       state.model,
@@ -254,15 +256,6 @@ export class ClaudeCodeAdapter implements SourceAdapter {
 
   /** 无 ai-title 时，用首条用户文本截断作为标题兜底。 */
   private fallbackTitle(events: Event[]): string | null {
-    for (const e of events) {
-      if (e.role !== 'user') continue;
-      for (const b of e.blocks) {
-        if (b instanceof TextBlock) {
-          const text = b.text.trim().replace(/\s+/g, ' ');
-          if (text) return text.slice(0, 80);
-        }
-      }
-    }
-    return null;
+    return deriveTitle(events);
   }
 }

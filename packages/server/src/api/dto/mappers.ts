@@ -18,7 +18,7 @@ export function collectionToDTO(c: CollectionSummary): CollectionDTO {
   return {
     id: c.collectionId,
     name: c.collectionId,
-    source: c.source,
+    sources: c.sources,
     rootPath: c.collectionId,
     sessionCount: c.sessionCount,
   };
