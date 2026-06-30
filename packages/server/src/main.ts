@@ -51,6 +51,11 @@ async function bootstrap(): Promise<void> {
   const indexed = await query.syncIndex();
   live.start();
 
+  // 低频增量发现：周期性扫描，让新建会话尽快出现在列表（只解析新会话，开销小）
+  const discoverTimer = setInterval(() => {
+    query.refreshIndex().catch(() => {});
+  }, 15_000);
+
   // 启动时回填用量统计（幂等），并启动凌晨重算调度
   const statDays = await stats.backfill();
   const scheduler = new DailyScheduler((yesterday) => stats.rebuildDay(yesterday));
@@ -68,6 +73,7 @@ async function bootstrap(): Promise<void> {
   app.log.info(`indexed ${indexed} sessions, ${statDays} stat rows from ${claudeRoot} & ${codexRoot}`);
 
   const shutdown = () => {
+    clearInterval(discoverTimer);
     live.stop();
     scheduler.stop();
     db.close();

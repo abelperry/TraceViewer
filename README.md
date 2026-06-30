@@ -1,64 +1,90 @@
 # Trace Review
 
-实时查看 Claude Code / Codex agent 运行 trace 的 Web 工具（docent 风格三栏视图 + 实时刷新）。
+[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](./LICENSE)
+![TypeScript](https://img.shields.io/badge/TypeScript-strict-3178c6)
+![React](https://img.shields.io/badge/React-18-61dafb)
+![PRs Welcome](https://img.shields.io/badge/PRs-welcome-brightgreen.svg)
 
-## 架构（DDD 分层 + 依赖倒置）
+A web tool for inspecting Claude Code / Codex agent run traces in real time (docent-style tree navigation + live refresh + daily token-usage stats).
+
+![demo](./docs/demo.gif)
+
+## Architecture (DDD layering + dependency inversion)
 
 ```
 monorepo (pnpm)
-├─ packages/shared      传输 DTO（贫血），前后端契约面
-├─ packages/server      后端，严格分层：
-│  ├─ domain/           内核：充血实体 + 领域服务 + port 接口（零框架依赖）
-│  │   ├─ model/        Session(聚合根) / Event / Block / TokenUsage / SessionMeta
-│  │   ├─ service/      TranscriptAssembler（装配/增量并入）
-│  │   └─ port/         SessionRepository / TraceSource / SourceAdapter（接口在此）
-│  ├─ application/      用例编排：SessionQueryService / LiveStreamService
-│  ├─ infra/            port 实现（反向依赖 domain）：
-│  │   ├─ adapters/     ClaudeCodeAdapter + AdapterRegistry
-│  │   ├─ persistence/  SqliteSessionRepository
-│  │   └─ filesource/   FsTraceSource（字节偏移 tail + chokidar 监听）
-│  ├─ api/              Fastify 路由 + SSE + DTO 映射
-│  └─ main.ts           组合根（唯一 new infra 并注入的地方）
-└─ packages/web         React + Vite 三栏视图 + EventSource 实时刷新
+├─ packages/shared      transport DTOs (anemic), the front/back contract
+├─ packages/server      backend, strictly layered:
+│  ├─ domain/           core: rich entities + domain services + ports (zero framework deps)
+│  │   ├─ model/        Session(aggregate root) / Event / Block / TokenUsage / SessionMeta / DailyStat
+│  │   ├─ service/      TranscriptAssembler (assemble/append) / StatisticAggregator (per-day rollup)
+│  │   └─ port/         SessionRepository / TraceSource / SourceAdapter / StatisticRepository
+│  ├─ application/      use-case orchestration: SessionQueryService / LiveStreamService / StatisticService
+│  ├─ infra/            port implementations (depend inward on domain):
+│  │   ├─ adapters/     ClaudeCodeAdapter / CodexAdapter / AdapterRegistry
+│  │   ├─ persistence/  SqliteSessionRepository / SqliteStatisticRepository
+│  │   ├─ filesource/   FsTraceSource (byte-offset tail + fs.watchFile)
+│  │   └─ scheduler/    DailyScheduler (recompute yesterday across midnight)
+│  ├─ api/              Fastify routes + SSE + DTO mapping
+│  └─ main.ts           composition root (the only place that `new`s infra and injects it)
+└─ packages/web         React + Vite two-pane tree view + EventSource live refresh + Stats heatmap
 ```
 
-依赖方向：`api → application → domain ← infra`。domain 只被依赖、不依赖外层。换存储（SQLite→Postgres）或来源（本地→远程）只新增 infra 实现，domain/application 不动。
+Dependency direction: `api → application → domain ← infra`. The domain is only depended upon, never depends outward. Swapping storage (SQLite→Postgres) or source (local→remote) only adds an infra implementation — domain/application stay untouched.
 
-## 扩展新 trace 格式
+## Supported formats
 
-实现 `domain/port/SourceAdapter.ts` 接口（`detect` / `parseSession` / `parseIncremental`），
-放到 `infra/adapters/`，在 `main.ts` 的 `AdapterRegistry` 注册即可，server/web 零改动。
-Codex 适配器即按此方式追加。
+| Format | Source directory | Collection grouping |
+|---|---|---|
+| Claude Code | `~/.claude/projects/**/*.jsonl` | by session cwd |
+| Codex | `~/.codex/**/rollout-*.jsonl` | by session cwd |
 
-## 实时刷新原理
+Claude and Codex sessions under the same project directory are merged into one collection.
 
-JSONL 是唯一真实数据源。`FsTraceSource` 记录每个文件的字节偏移，chokidar 检测到追加后
-只读新增字节、按完整行切分（残行留到下次），`parseIncremental` 转成增量事件并入聚合，
-经 SSE `patch` 事件推给订阅的前端。
+## Adding a new trace format
 
-## 运行
+Implement the `domain/port/SourceAdapter.ts` interface (`detect` / `parseSession` / `parseIncremental` / `extractUsage`),
+drop it in `infra/adapters/`, register it in `main.ts`'s `AdapterRegistry` and add one `FsTraceSource`.
+application / api / web need no changes. The Codex adapter was added exactly this way.
+
+## How live refresh works
+
+JSONL is the single source of truth. When a session is opened, `LiveStreamService` polls that file with
+`fs.watchFile`; on change it reads incrementally from the last byte offset, splits on complete lines (an
+incomplete trailing line is held until next time), and `parseIncremental` turns the new lines into events
+merged into the aggregate, pushed to subscribers via an SSE `patch` event. running/done is derived from file mtime.
+
+## Daily token-usage statistics
+
+On startup `StatisticService` scans all traces to backfill historical daily usage (aggregated by date × source × model);
+`DailyScheduler` recomputes yesterday after crossing local midnight. The web Stats view shows daily tokens as a
+heatmap with 7d / 30d / all ranges.
+Conventions: token = input + output; message = user + assistant turns; source is the agent type (claude-code / codex).
+
+## Running
 
 ```bash
 pnpm install
-pnpm dev            # 同时启动 server(:4000) 与 web(:5173)
-# 或分别：
+pnpm dev            # start server(:4000) and web(:5173) together
+# or separately:
 pnpm dev:server
 pnpm dev:web
 ```
 
-打开 http://localhost:5173 。
+Open http://localhost:5173 .
 
-### 环境变量（server）
+### Environment variables (server)
 
-| 变量 | 默认 | 说明 |
+| Variable | Default | Description |
 |---|---|---|
-| `PORT` | 4000 | 后端端口 |
-| `CLAUDE_PROJECTS_DIR` | `~/.claude/projects` | 扫描根目录 |
-| `DB_PATH` | `./trace-review.sqlite` | 元数据索引库 |
+| `PORT` | `4000` | backend port |
+| `CLAUDE_PROJECTS_DIR` | `~/.claude/projects` | Claude Code trace scan root |
+| `CODEX_SESSIONS_DIR` | `~/.codex` | Codex trace scan root |
+| `DB_PATH` | `./trace-review.sqlite` | metadata + daily-stats index db |
 
-## 测试
+## Tests
 
 ```bash
-pnpm -r test        # 16 个测试：适配器解析 / tail 偏移 / SQLite 仓储
+pnpm -r test        # adapter parsing / tail offset / SQLite repos / daily aggregation
 pnpm -r typecheck
 ```

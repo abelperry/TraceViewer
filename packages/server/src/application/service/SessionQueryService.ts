@@ -67,6 +67,38 @@ export class SessionQueryService {
     return seen.size;
   }
 
+  /**
+   * 增量发现：只扫文件列表（不读内容），对「库里还没有」的新会话才解析入库。
+   * 已存在的会话跳过——其状态由 queryMetas 按 mtime 实时覆盖，无需重解析。
+   * 开销远小于 syncIndex，可高频调用以让新会话尽快出现。
+   * 返回新入库的会话数。
+   */
+  async refreshIndex(now: Date = nowOrEpoch()): Promise<number> {
+    let added = 0;
+    for (const source of this.sources) {
+      const refs = await source.scan();
+      for (const ref of refs) {
+        // 已索引则只补 refIndex 定位、跳过解析
+        if (this.repo.findMeta(ref.sessionId)) {
+          if (!this.refIndex.has(ref.sessionId)) this.refIndex.set(ref.sessionId, { ref, source });
+          continue;
+        }
+        const adapter = await this.resolveAdapter(source, ref);
+        if (!adapter) continue;
+        try {
+          const lines = await source.readAll(ref);
+          const { session } = this.assembler.assemble(adapter, ref, lines);
+          this.repo.upsertMeta(session.toMeta(now));
+          this.refIndex.set(ref.sessionId, { ref, source });
+          added++;
+        } catch {
+          continue;
+        }
+      }
+    }
+    return added;
+  }
+
   listCollections(): CollectionSummary[] {
     return this.repo.listCollections();
   }
