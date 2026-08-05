@@ -7,6 +7,8 @@ dist/
 *.sqlite-shm
 *.sqlite-wal
 *.db
+.env
+.env.local
 .vite/
 coverage/
 .claude
